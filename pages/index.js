@@ -39,7 +39,9 @@ export default function Home() {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }).slice(1);
     const parsed = rows.map(r => ({
+      bloque: r[0],
       curso: r[1],
+      dia: r[2],
       idBloque: r[3],
       profesorAsignado: null
     }));
@@ -80,6 +82,7 @@ export default function Home() {
       body: talleresAsignados.map(t => [t.curso, t.idBloque, t.profesorAsignado || '—']),
     });
 
+    // Resumen Final
     const resumen = {};
     talleresAsignados.forEach(t => {
       if (!t.profesorAsignado) return;
@@ -107,6 +110,26 @@ export default function Home() {
         [...d.bloques].join(', '),
         [...d.cursos].join(', ')
       ]),
+    });
+
+    // 🆕 NUEVO: Resumen detallado con día, bloque, curso
+    const resumenDetalle = {};
+    talleresAsignados.forEach(t => {
+      if (!t.profesorAsignado) return;
+      if (!resumenDetalle[t.profesorAsignado]) {
+        resumenDetalle[t.profesorAsignado] = [];
+      }
+      resumenDetalle[t.profesorAsignado].push(`${t.dia} ${t.bloque} ${t.curso}`);
+    });
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 10,
+      head: [['Profesor', 'Cantidad de Bloques Asignados', 'Bloques']],
+      body: Object.entries(resumenDetalle).map(([prof, bloques]) => [
+        prof,
+        bloques.length,
+        bloques.join(' | ')
+      ])
     });
 
     doc.save('informe_asignacion_profesores.pdf');
@@ -139,15 +162,15 @@ export default function Home() {
 
       {talleresOriginales.length > 0 && renderTable(
         'Tabla de Talleres Originales (TH_TALLERES)',
-        ['Curso', 'ID Bloque'],
-        talleresOriginales.map(t => [t.curso, t.idBloque]),
+        ['Bloque', 'Curso', 'Día', 'ID Bloque'],
+        talleresOriginales.map(t => [t.bloque, t.curso, t.dia, t.idBloque]),
         () => exportToExcel(talleresOriginales, 'bloques.xlsx')
       )}
 
       {talleresAsignados.length > 0 && renderTable(
         'Talleres con Profesor Asignado',
-        ['Curso', 'ID Bloque', 'Profesor Asignado'],
-        talleresAsignados.map(t => [t.curso, t.idBloque, t.profesorAsignado || '—']),
+        ['Bloque', 'Curso', 'Día', 'ID Bloque', 'Profesor Asignado'],
+        talleresAsignados.map(t => [t.bloque, t.curso, t.dia, t.idBloque, t.profesorAsignado || '—']),
         () => exportToExcel(talleresAsignados, 'talleres_asignados.xlsx')
       )}
 
@@ -190,6 +213,45 @@ export default function Home() {
               Cursos: [...d.cursos].join(', ')
             }));
             exportToExcel(datosExcel, 'resumen_final.xlsx');
+          }
+        );
+      })()}
+
+      {talleresAsignados.length > 0 && (() => {
+        const resumenPorProfesor = {};
+
+        talleresAsignados.forEach(t => {
+          if (!t.profesorAsignado) return;
+          if (!resumenPorProfesor[t.profesorAsignado]) {
+            resumenPorProfesor[t.profesorAsignado] = {
+              cantidad: 0,
+              bloques: []
+            };
+          }
+
+          resumenPorProfesor[t.profesorAsignado].cantidad++;
+          resumenPorProfesor[t.profesorAsignado].bloques.push(
+            `${t.dia} ${t.bloque} ${t.curso}`
+          );
+        });
+
+        const datos = Object.entries(resumenPorProfesor).map(([profesor, info]) => [
+          profesor,
+          info.cantidad,
+          info.bloques.join(' | ')
+        ]);
+
+        return renderTable(
+          'Resumen Detallado por Profesor (Día, Bloque, Curso)',
+          ['Profesor', 'Cantidad de Bloques Asignados', 'Bloques Asignados'],
+          datos,
+          () => {
+            const datosExcel = Object.entries(resumenPorProfesor).map(([profesor, info]) => ({
+              Profesor: profesor,
+              Cantidad: info.cantidad,
+              Bloques: info.bloques.join(' | ')
+            }));
+            exportToExcel(datosExcel, 'resumen_detallado.xlsx');
           }
         );
       })()}
